@@ -87,6 +87,26 @@ public extension EUDCCDecoder {
         )
     }
     
+    /// Decode JSON from EUDCC Base-45 encoded `String`
+    /// - Parameter base45EncodedString: The EUDCC Base-45 encoded `String`
+    /// - Returns: A Result contains either the successfully decoded EUDCC JSON data or an DecodingError
+    func decodeJSON(from base45EncodedString: String) -> Result<Data, DecodingError> {
+        // Drop EUDCC Prefix
+        self.dropPrefixIfNeeded(
+            from: base45EncodedString
+        )
+        // Decode Base-45
+        .flatMap(self.decodeBase45)
+        // Decompress Data
+        .flatMap(self.decompress)
+        // Decode CBOR
+        .flatMap(self.decodeCBOR)
+        // Decode COSE
+        .flatMap(self.decodeCOSE)
+        // Decode EUDCC
+        .flatMap(self.decodeEUDCCData)
+    }
+    
     /// Decode EUDCC from EUDCC Base-45 encoded `String`
     /// - Parameter base45EncodedString: The EUDCC Base-45 encoded `String`
     /// - Returns: A Result contains either the successfully decoded EUDCC or an DecodingError
@@ -261,6 +281,47 @@ private extension EUDCCDecoder {
 // MARK: - Decode EUDCC
 
 private extension EUDCCDecoder {
+    
+    func decodeEUDCCData(
+        cryptographicSignature: EUDCC.CryptographicSignature
+    ) -> Result<Data, DecodingError> {
+        // Declare CBOR Payload
+        let cborPayload: SwiftCBOR.CBOR
+        do {
+            // Try to decode COSE Payload as CBOR and verify Item is available
+            guard let cbor = try SwiftCBOR.CBORDecoder(
+                input: [UInt8](cryptographicSignature.payload)
+            ).decodeItem() else {
+                // Otherwise return COSE Payload JSON Data Error
+                return .failure(.coseCBORDecodingError(nil))
+            }
+            // Initialize CBOR Payload
+            cborPayload = cbor
+        } catch {
+            // Return COSE Payload JSON Data Error
+            return .failure(.coseCBORDecodingError(error))
+        }
+        // Verify Dictionary Representation from CBOR Payload is available
+        guard let dictionaryRepresentation = cborPayload.dictionaryRepresentation() else {
+            // Otherwise return COSE Payload JSON Data Error
+            return .failure(.cosePayloadJSONDataError(nil))
+        }
+        // Declare Payload JSON Data
+        let payloadJSONData: Data
+        do {
+            // Try to serialize Dictionary Representation as JSON Data
+            payloadJSONData = try JSONSerialization.data(
+                withJSONObject: dictionaryRepresentation
+            )
+        } catch {
+            // Return COSE Payload JSON Data Error
+            return .failure(.cosePayloadJSONDataError(error))
+        }
+        
+        // Return success with decoded JSON Payload
+        return .success(payloadJSONData)
+    }
+    
     
     /// Decode EUDCC
     /// - Parameter cryptographicSignature: The EUDCC CryptographicSignature

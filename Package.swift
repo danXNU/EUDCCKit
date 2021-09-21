@@ -5,7 +5,7 @@ import PackageDescription
 let package = Package(
     name: "EUDCCKit",
     platforms: [
-        .iOS(.v12),
+        .iOS(.v11),
         .tvOS(.v12),
         .watchOS(.v5),
         .macOS(.v10_15)
